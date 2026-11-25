@@ -1,126 +1,107 @@
-# Direct Line Bot Sample
+# DirectLine-Automotive
 
-A sample bot and a custom client communicating to each other using the Direct Line API.
+These are the client apps for an automotive chatbot demo built on Microsoft Bot Framework and Azure Bot Service. It includes two ways to talk to the bot through the Direct Line 3.0 API:
 
-[![Deploy to Azure][Deploy Button]][Deploy CSharp/DirectLine]
+- a branded web chat page built with ASP.NET, Bootstrap and AngularJS
+- a console client
 
-[Deploy Button]: https://azuredeploy.net/deploybutton.png
-[Deploy CSharp/DirectLine]: https://azuredeploy.net
+This repository has client code only. The bot itself (`EjAutomotiveBot`) ran as a separate Azure Bot Service app. It showed car models as cards with grades, prices, features and specs. It also opened the dealer's feature pages and answered free-text questions such as "my budget is 150000 SAR, which cars suit me?".
 
-### Prerequisites
+The code dates from February 2019 and was part of a set of chatbot demos on Azure. A stocks and mutual funds bot was in the same set.
 
-The minimum prerequisites to run this sample are:
-* The latest update of Visual Studio 2015. You can download the community version [here](http://www.visualstudio.com) for free.
-* The Bot Framework Emulator. To install the Bot Framework Emulator, download it from [here](https://emulator.botframework.com/). Please refer to [this documentation article](https://github.com/microsoft/botframework-emulator/wiki/Getting-Started) to know more about the Bot Framework Emulator.
-* Register your bot with the Microsoft Bot Framework. Please refer to [this](https://docs.microsoft.com/en-us/bot-framework/portal-register-bot) for the instructions. Once you complete the registration, update the [Bot's Web.config](DirectLineBot/Web.config#L9-L11) file with the registered config values (Bot Id, MicrosoftAppId and MicrosoftAppPassword)
+## Repository layout
 
-#### Direct Line API
-Credentials for the Direct Line API must be obtained from the Bot Framework developer portal, and will only allow the caller to connect to the bot for which they were generated.
-In the Bot Framework developer portal, enable Direct Line in the channels list and then, configure the Direct Line secret and update its value in the [client's App.config](DirectLineClient/App.config#L4-L5) file alongside with the Bot Id. Make sure that the checkbox for version 3.0 [PREVIEW] is checked. Refer to [this](https://docs.microsoft.com/en-us/bot-framework/portal-configure-channels) for more information on how to configure channels.
+The source is stored as a single archive, `DirectLine-Automotive.zip`. Unzip it to get this structure:
 
-![Configure Direct Line](images/outcome-configure.png)
+```
+DirectLine-Automotive/
+├── azuredeploy.json                      # ARM template for an App Service (from the Bot Builder samples)
+├── DirectLineBot.sln                     # Solution for the console client
+├── DirectLineClient/                     # Console client (.NET Framework 4.6.1)
+│   ├── Program.cs                        # Starts a conversation, sends input, polls for replies
+│   ├── Models/DirectLineCardContent.cs
+│   ├── App.config                        # DirectLineSecret and BotId
+│   └── packages.config
+└── DirectLineAutomotiveChatBot/
+    └── DirectLineAutomotiveChatBot/
+        ├── DirectLineAutomotiveChatBot.sln
+        └── DirectLineAutomotiveChatBot/  # ASP.NET Web Forms site (.NET Framework 4.6.1)
+            ├── EJAutomotiveChatBot.aspx  # The chat page
+            ├── EJAutomotiveChatBot.aspx.cs
+            ├── Web.config                # DirectLineSecret and BotId
+            ├── scripts/                  # jQuery, Bootstrap, AngularJS, chat.js (ChatLib), botchat.js, marked
+            └── styles/                   # Bootstrap themes, botchat and chat styles
+```
 
-#### Publish
-Also, in order to be able to run and test this sample you must [publish your bot, for example to Azure](https://docs.microsoft.com/en-us/bot-framework/publish-bot-overview). Alternatively, you can use [Ngrok to interact with your local bot in the cloud](https://blogs.msdn.microsoft.com/jamiedalton/2016/07/29/ms-bot-framework-ngrok/). 
+## How it works
 
-### Code Highlights
+```mermaid
+flowchart LR
+    U[User] --> W[Web chat page<br/>EJAutomotiveChatBot.aspx]
+    U --> C[Console client<br/>DirectLineSampleClient]
+    W -->|Direct Line 3.0| DL[Azure Bot Service<br/>Direct Line channel]
+    C -->|Direct Line 3.0| DL
+    DL --> B[EjAutomotiveBot]
+```
 
-The Direct Line API is a simple REST API for connecting directly to a single bot. This API is intended for developers writing their own client applications, web chat controls, or mobile apps that will talk to their bot. The [Direct Line v3.0 Nuget package](https://www.nuget.org/packages/Microsoft.Bot.Connector.DirectLine/3.0.0-beta) simplifies access to the underlying REST API.
+The two clients use the same Direct Line pattern:
 
-Each conversation on the Direct Line channel must be explicitly started using the `DirectLineClient.Conversations.StartConversationAsync`.
-Check out the client's [Program.cs](DirectLineClient/Program.cs#L25-L27) class which creates a new `DirectLineClient` and starts a new conversation.
+1. Start a conversation with `Conversations.StartConversationAsync`.
+2. Send each user message as an `Activity` with `Conversations.PostActivityAsync`.
+3. Poll `Conversations.GetActivitiesAsync` with a watermark, so each call returns only new activities. Keep the ones sent by the bot.
+4. Show each reply's text and its attachments. Hero cards are drawn as a framed text block in the console, and image attachments are listed by URL.
 
+The web page does this in the browser. `ChatLib.ChatClient` (in `scripts/chat.js`) takes the bot ID and a Direct Line secret or token. AngularJS binds the message list (`GetMessages`) and the send button (`sendTextMessage`). Replies are rendered as Markdown through `marked`, with sanitising turned on. You can override the header colour with a `bothighlightcolor` query string parameter.
 
-````C#
-DirectLineClient client = new DirectLineClient(directLineSecret);
-            
-var conversation = await client.Conversations.StartConversationAsync();
-````
+The page's code-behind (`EJAutomotiveChatBot.aspx.cs`) has a server-side copy of the console logic. It is commented out of `Page_Load`, so all chat traffic goes from the browser.
 
-User messages are sent to the Bot using the Direct Line Client `Conversations.PostActivityAsync` method using the `ConversationId` generated in the previous step.
+## Requirements
 
-````C#
-while (true)
-{
-    string input = Console.ReadLine().Trim();
+- Windows with Visual Studio 2017 or later
+- .NET Framework 4.6.1
+- IIS Express (the site runs at `http://localhost:62104/`)
+- An Azure Bot Service bot with the Direct Line channel turned on
 
-    if (input.ToLower() == "exit")
-    {
-        break;
-    }
-    else
-    {
-        if (input.Length > 0)
-        {
-            Activity userMessage = new Activity
-            {
-                From = new ChannelAccount(fromUser),
-                Text = input,
-                Type = ActivityTypes.Message
-            };
+NuGet packages (restored on build):
 
-            await client.Conversations.PostActivityAsync(conversation.ConversationId, userMessage);
-        }
-    }
-}
-````
+| Package | Version |
+|---|---|
+| Microsoft.Bot.Connector.DirectLine | 3.0.1 (console), 3.0.2 (web) |
+| Microsoft.Rest.ClientRuntime | 2.3.2 / 2.3.4 |
+| Newtonsoft.Json | 6.0.8 / 9.0.1 |
+| Microsoft.CodeDom.Providers.DotNetCompilerPlatform | 1.0.7 |
 
-Messages from the Bot are continually polled from the API in another Thread in the `ReadBotMessagesAsync` method. Check out the [Program.cs](DirectLineClient/Program.cs#L64-L69) usage of `GetActivitiesAsync` method which retrieves conversation messages newer than the stored watermark. Activities are then filtered to receive messages from the Bot only.
+## Setup
 
-````C#
-var activitySet = await client.Conversations.GetActivitiesAsync(conversationId, watermark);
-watermark = activitySet?.Watermark;
+1. Unzip `DirectLine-Automotive.zip`.
+2. In the Azure portal, open your bot, add the Direct Line channel and copy one of its secret keys.
+3. Put the secret and the bot's handle into the config files:
 
-var activities = from x in activitySet.Activities
-                    where x.From.Id == botId
-                    select x;
-````
+   ```xml
+   <appSettings>
+     <add key="DirectLineSecret" value="YOUR_DIRECT_LINE_SECRET" />
+     <add key="BotId" value="YOUR_BOT_HANDLE" />
+   </appSettings>
+   ```
 
-DirectLine v3.0 (unlike version 1.1) has support for Attachments (see [Add media attachments to messages](https://docs.microsoft.com/en-us/bot-framework/dotnet/bot-builder-dotnet-add-media-attachments) for more information about attachments). Check out the `ReadBotMessagesAsync` method in [Program.cs](DirectLineClient/Program.cs#L75-L92) to see how the Attachments are retrieved and rendered appropriately based on their type.
+   Do this in both `DirectLineClient/App.config` and the web project's `Web.config`.
 
+4. In `EJAutomotiveChatBot.aspx`, set `botid` and `tokenOrSecret` in the inline script.
 
-````C#
-if (activity.Attachments != null)
-{
-    foreach (Attachment attachment in activity.Attachments)
-    {
-        switch (attachment.ContentType)
-        {
-            case "application/vnd.microsoft.card.hero":
-                RenderHeroCard(attachment);
-                break;
+## Running
 
-            case "image/png":
-                Console.WriteLine($"Opening the requested image '{attachment.ContentUrl}'");
+To run the console client, open `DirectLineBot.sln`, set `DirectLineSampleClient` as the startup project and press F5. Type a message at `Command>`. Type `exit` to quit.
 
-                Process.Start(attachment.ContentUrl);
-                break;
-        }
-    }
-}
-````
+To run the web chat, open `DirectLineAutomotiveChatBot.sln`, run the site, then go to `/EJAutomotiveChatBot.aspx`. The welcome message asks you to say "hi" to start.
 
+## Known issues and next steps
 
-### Outcome
+- The page loads `/scripts/app.js`, which holds the AngularJS `ChatCtrl` controller. That file isn't in the archive, so the web page won't work until it's restored.
+- The `README` linked from `DirectLineBot.sln` and the `DirectLineBot` project described in Microsoft's original sample aren't in the archive either. Only the console client is.
+- The web page puts the Direct Line secret in client-side JavaScript, where any visitor can read it. For anything public, keep the secret on the server and give the browser a short-lived token from the `/v3/directline/tokens/generate` endpoint.
+- Keeping the code in a zip means GitHub can't show diffs, search or browse it. Committing the unzipped source, with `bin/`, `obj/` and `packages/` ignored, would make the repository much easier to use.
+- Bot Framework v3 and its Web Chat control have since been retired. A current build would use Bot Framework SDK v4 or Copilot Studio, with Web Chat v4.
 
-To run the sample, you'll need to run both Bot and Client apps.
-* Running Bot app
-    1. In the Visual Studio Solution Explorer window, right click on the **DirectLineBot** project.
-    2. In the contextual menu, select Debug, then Start New Instance and wait for the _Web application_ to start.
-* Running Client app
-    1. In the Visual Studio Solution Explorer window, right click on the **DirectLineSampleClient** project.
-    2. In the contextual menu, select Debug, then Start New Instance and wait for the _Console application_ to start.
+## Credits
 
-To test the Attachments type `show me a hero card` or `send me a botframework image` and you should see the following outcome.
-
-![Sample Outcome](images/outcome.png)
-
-### More Information
-
-To get more information about how to get started in Bot Builder for .NET and Conversations please review the following resources:
-* [Bot Builder for .NET](https://docs.microsoft.com/en-us/bot-framework/dotnet/)
-* [Bot Framework FAQ](https://docs.microsoft.com/en-us/bot-framework/resources-bot-framework-faq#i-have-a-communication-channel-id-like-to-be-configurable-with-bot-framework-can-i-work-with-microsoft-to-do-that)
-* [Direct Line API - v3.0](https://docs.botframework.com/en-us/restapi/directline3/)
-* [Direct Line v3.0 Nuget package](https://www.nuget.org/packages/Microsoft.Bot.Connector.DirectLine/3.0.0-beta)
-* [Add media attachments to messages](https://docs.microsoft.com/en-us/bot-framework/dotnet/bot-builder-dotnet-add-media-attachments)
-* [Bot Framework Emulator](https://github.com/microsoft/botframework-emulator/wiki/Getting-Started)
+The console client and `azuredeploy.json` are based on Microsoft's [Direct Line sample](https://github.com/microsoft/BotBuilder-Samples) from the Bot Builder samples repository.
