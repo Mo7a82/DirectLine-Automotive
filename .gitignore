@@ -1,2 +1,21 @@
+# Visual Studio state
+.vs/
+*.suo
+*.user
+*.userosscache
+
+# Build output
+[Bb]in/
+[Oo]bj/
+*.pdb
+
+# NuGet packages are restored on build
+packages/
+
+# Local secrets (copy DirectLine.secrets.config.example and fill it in)
+DirectLine.secrets.config
+
+# OS and editor files
 .DS_Store
-.idea
+Thumbs.db
+.idea/
